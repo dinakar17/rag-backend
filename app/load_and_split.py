@@ -7,7 +7,7 @@ from constants import DATA_DIR
 
 BASE_DIR = Path(__file__).resolve().parent 
 
-data_folder_path = DATA_DIR
+data_folder_path = f"{DATA_DIR}"
 
 # Get the path of all pdf files present in the data folder
 pdf_files = [os.path.join(data_folder_path, f) for f in os.listdir(data_folder_path) if f.endswith('.pdf')]

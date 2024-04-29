@@ -46,7 +46,7 @@ app.add_middleware(
 
 @app.post("/upload-files/")
 async def create_upload_files(file: UploadFile = File(...)):
-    folder_path = DATA_DIR
+    folder_path = f"{DATA_DIR}"
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
@@ -79,15 +79,10 @@ async def create_upload_files(file: UploadFile = File(...)):
     os.rename(temp_file_path, final_file_path)
     return {"filename": file.filename}
 
-
-BASE_DIR = Path(__file__).resolve().parent / "storage/data"
-
-
 @app.get("/files/{file_path:path}")
 async def read_file(file_path: str):
     # Create the full path to the file
-    file_location = BASE_DIR / file_path
-    print(file_location)
+    file_location = DATA_DIR / file_path
 
     # Check if the file exists and is in the 'data' directory
     if file_location.exists() and file_location.is_file() and BASE_DIR in file_location.parents:
@@ -100,7 +95,7 @@ async def read_file(file_path: str):
 @app.post("/embed/")
 async def embed_file(file_name: str):
     # Create the full path to the file
-    file_location = BASE_DIR / file_name
+    file_location = DATA_DIR / file_name
     
     # Check if the file exists and is in the 'data' directory
     if file_location.exists() and file_location.is_file() and BASE_DIR in file_location.parents:
@@ -118,29 +113,39 @@ async def embed_file(file_name: str):
             documents = text_splitter.split_documents(raw_document)
             
         
-            db = Chroma(persist_directory=DB_DIR, embedding_function=bge_embeddings)
+            db = Chroma(persist_directory=f"{DB_DIR}", embedding_function=bge_embeddings)
+
+
+            # check if the file is already embedded
+            for i in range(len(db._collection.get()['ids'])):
+                metadata = db._collection.get()['metadatas'][i]
+                if file_name in metadata['source']:
+                    raise HTTPException(status_code=400, detail="File already embedded")
+
+            before_count = db._collection.count()
             
             # insert the documents into the db with random ids
             db.add_documents(documents)
         except Exception as e:
+            print(f"Error embedding the file: {e}")
             raise HTTPException(status_code=500, detail="Error embedding the file")
     else:
         # If the file does not exist, return a 404 error
         raise HTTPException(status_code=404, detail="File not found")
     
-    return {"filename": file_name}
+    return {"filename": file_name, "embeddings_before": before_count, "embeddings_after": db._collection.count()}
 
 
 
 @app.delete("/files/{file_path:path}")
 async def delete_file(file_path: str):
     # Create the full path to the file
-    file_location = BASE_DIR / file_path
+    file_location = DATA_DIR / file_path
 
     # Check if the file exists and is in the 'data' directory
-    if file_location.exists() and file_location.is_file() and BASE_DIR in file_location.parents:
+    if file_location.exists() and file_location.is_file() and DATA_DIR in file_location.parents:
         try:
-            db = Chroma(persist_directory=DB_DIR, embedding_function=bge_embeddings)
+            db = Chroma(persist_directory=f"{DB_DIR}", embedding_function=bge_embeddings)
             collection = db._collection.get()
             
             embeddings_count = db._collection.count()

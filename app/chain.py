@@ -32,6 +32,7 @@ from langchain_community.vectorstores import Chroma
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .constants import DB_DIR, WEAVIATE_DOCS_INDEX_NAME
+from .engine.prompts import IMPROVED_QA_PROMPT, OPTIMIZED_CONDENSE_PROMPT
 
 app = FastAPI()
 
@@ -59,23 +60,23 @@ def serialize_history(request: ChatRequest):
             converted_chat_history.append(AIMessage(content=message["ai"]))
     return converted_chat_history
 
-WEAVIATE_URL = os.environ["WEAVIATE_URL"]
-WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
+# WEAVIATE_URL = os.environ["WEAVIATE_URL"]
+# WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
 
-def get_weaviate_retriever() -> BaseRetriever:
-    weaviate_client = weaviate.Client(
-        url=WEAVIATE_URL,
-        auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
-    )
-    weaviate_client = Weaviate(
-        client=weaviate_client,
-        index_name=WEAVIATE_DOCS_INDEX_NAME,
-        text_key="text",
-        embedding=get_embeddings_model(),
-        by_text=False,
-        attributes=["source", "title"],
-    )
-    return weaviate_client.as_retriever(search_kwargs=dict(k=6))
+# def get_weaviate_retriever() -> BaseRetriever:
+#     weaviate_client = weaviate.Client(
+#         url=WEAVIATE_URL,
+#         auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
+#     )
+#     weaviate_client = Weaviate(
+#         client=weaviate_client,
+#         index_name=WEAVIATE_DOCS_INDEX_NAME,
+#         text_key="text",
+#         embedding=get_embeddings_model(),
+#         by_text=False,
+#         attributes=["source", "title"],
+#     )
+#     return weaviate_client.as_retriever(search_kwargs=dict(k=6))
 
 def get_retriever() -> BaseRetriever:
     logging.info("Loading retriever...")
@@ -87,7 +88,7 @@ def get_retriever() -> BaseRetriever:
         model_name=model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
     )
     
-    db = Chroma(persist_directory=DB_DIR, embedding_function=embedding_function)
+    db = Chroma(persist_directory=f"{DB_DIR}", embedding_function=embedding_function)
     
     logging.info("Retriever loaded")
     
@@ -102,30 +103,15 @@ def format_docs(docs: Sequence[Document]) -> str:
     return "\n".join(formatted_docs)
 
 
-# chat_history and question are the keys in the request body
-REPHRASE_TEMPLATE = """\
-Given the following conversation and a follow up question, rephrase the follow up \
-question to be a standalone question.
 
-Chat History:
-{chat_history}
-Follow Up Input: {question}
-Standalone Question:"""
 
-RESPONSE_TEMPLATE = """You are an assistant for question-answering tasks. \
-Use the following pieces of retrieved context to answer the question. \
-If you don't know the answer, just say that you don't know. \
-Use three sentences maximum and keep the answer concise.\
-
-{context}
-"""
 
 # If there is just a question return the retriever by passing the question to it
 # If there is question + chat history, extract the question from the chat history and pass it to the retriever
 def create_retriever_chain(
     llm: LanguageModelLike, retriever: BaseRetriever
 ) -> Runnable:
-    CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(REPHRASE_TEMPLATE)
+    CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(OPTIMIZED_CONDENSE_PROMPT)
     condense_question_chain = (
         # chain functions together, where the output of one function becomes the input for the next. (introduced in 3.10)
         CONDENSE_QUESTION_PROMPT | llm | StrOutputParser()
@@ -168,7 +154,7 @@ def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
     # A prompt template that will be used to generate the response
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", RESPONSE_TEMPLATE),
+            ("system", IMPROVED_QA_PROMPT),
             # Place holder for the chat history
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{question}"),

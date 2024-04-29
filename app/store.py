@@ -22,7 +22,7 @@ embeddings = HuggingFaceBgeEmbeddings(
 # )
 
 
-db = Chroma.from_documents(documents=all_documents, embedding=embeddings, persist_directory=DB_DIR)
+db = Chroma.from_documents(documents=all_documents, embedding=embeddings, persist_directory=f"{DB_DIR}")
 
 print("VectorDB created")
 
