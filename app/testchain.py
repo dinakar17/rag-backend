@@ -1,35 +1,21 @@
 import logging
+from typing import Dict, List, Optional, Sequence
 
-from operator import itemgetter
-from typing import List, Dict, Optional, Sequence
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.language_models import LanguageModelLike
-from langchain_core.pydantic_v1 import BaseModel
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import (
-    ConfigurableField,
-    Runnable,
-    RunnableBranch,
-    RunnableLambda,
-    RunnablePassthrough,
-    RunnableSequence,
-    chain,
-)
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-    PromptTemplate,
-)
-from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
 from decouple import config
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
+from langchain_core.language_models import LanguageModelLike
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.pydantic_v1 import BaseModel
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.runnables import Runnable, RunnablePassthrough
+from langchain_openai import ChatOpenAI
 
 app = FastAPI()
 
@@ -42,11 +28,12 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+
 class ChatRequest(BaseModel):
     input: str
     chat_history: Optional[List[Dict[str, str]]]
-    
-    
+
+
 def serialize_history(request: ChatRequest):
     chat_history = request["chat_history"] or []
     converted_chat_history = []
@@ -57,6 +44,7 @@ def serialize_history(request: ChatRequest):
             converted_chat_history.append(AIMessage(content=message["ai"]))
     return converted_chat_history
 
+
 def get_retriever() -> BaseRetriever:
     logging.info("Loading retriever...")
     model_name = "BAAI/bge-small-en-v1.5"
@@ -66,11 +54,11 @@ def get_retriever() -> BaseRetriever:
     embedding_function = HuggingFaceBgeEmbeddings(
         model_name=model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs
     )
-    
+
     db = Chroma(persist_directory="./storage/db", embedding_function=embedding_function)
-    
+
     logging.info("Retriever loaded")
-    
+
     return db.as_retriever(search_type="similarity", search_kwargs={"k": 6})
 
 
@@ -96,46 +84,47 @@ Use three sentences maximum and keep the answer concise.\
 {context}"""
 
 
-
 def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", contextualize_q_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
+        [
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
     )
     history_aware_retriever = create_history_aware_retriever(
         llm, retriever, contextualize_q_prompt
     ).with_config(run_name="FindCDocs")
-    
+
     qa_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", qa_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
-    )
-    
-    qa_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", qa_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
+        [
+            ("system", qa_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
     )
 
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", qa_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
 
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 
     rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-    
-    return (
-        RunnablePassthrough.assign(chat_history=serialize_history)
-        | rag_chain 
-    )
-    
-llm = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True, openai_api_key=config("OPENAI_API_KEY"))
+
+    return RunnablePassthrough.assign(chat_history=serialize_history) | rag_chain
+
+
+llm = ChatOpenAI(
+    model="gpt-3.5-turbo-0125",
+    temperature=0,
+    streaming=True,
+    openai_api_key=config("OPENAI_API_KEY"),
+)
 
 retriever = get_retriever()
 

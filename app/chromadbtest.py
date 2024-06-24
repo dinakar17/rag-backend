@@ -13,4 +13,6 @@ embeddings = HuggingFaceBgeEmbeddings(
 db = Chroma(persist_directory="storage/db", embedding=embeddings)
 
 # insert the documents into the db with id as the filename
-db.add_documents(documents, embedding=embeddings, persist_directory="storage/db", id=file_name)
+# db.add_documents(
+#     documents, embedding=embeddings, persist_directory="storage/db", id=file_name
+# )

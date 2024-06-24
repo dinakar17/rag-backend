@@ -1,10 +1,7 @@
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.storage import LocalFileStore
-from langchain.embeddings import CacheBackedEmbeddings
-from load_and_split import all_documents
 from constants import DB_DIR
-
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_community.vectorstores import Chroma
+from load_and_split import all_documents
 
 model_name = "BAAI/bge-small-en-v1.5"
 model_kwargs = {"device": "cpu"}
@@ -22,16 +19,18 @@ embeddings = HuggingFaceBgeEmbeddings(
 # )
 
 
-db = Chroma.from_documents(documents=all_documents, embedding=embeddings, persist_directory=f"{DB_DIR}")
+db = Chroma.from_documents(
+    documents=all_documents, embedding=embeddings, persist_directory=f"{DB_DIR}"
+)
 
 print("VectorDB created")
 
 
-'''
+"""
 Load the db from the persisted directory
 
 db = Chroma.from_directory("./storage/db")
 
 vectordb = Chroma(persist_directory=APPCFG.persist_directory,
                                   embedding_function=embedding_function)
-'''
+"""
